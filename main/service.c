@@ -79,13 +79,8 @@ void service_perform(int connection_status, const StationData_t * data)
 
             if (data->bosz_ok)
             {
-                request_setf(&request, "bosz_T", data->bosz_temperature);
+                request_setf(&request, "bosz_T", data->temperature);
                 request_setf(&request, "pressure", data->pressure);
-            }
-
-            if (data->dte_ok)
-            {
-                request_setf(&request, "dte_T", data->dte_temperature);
                 request_setf(&request, "humidity", data->humidity);
             }
 

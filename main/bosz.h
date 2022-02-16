@@ -13,6 +13,6 @@
 void bosz_test(void);
 
 int bosz_init(void);
-int bosz_read(int32_t * temperature, uint32_t * pressure);
+int bosz_read(int32_t * temperature, uint32_t * pressure, uint32_t * humidity);
 
 #endif // _BOSH_H_

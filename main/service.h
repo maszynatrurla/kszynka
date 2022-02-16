@@ -17,11 +17,8 @@
 
 typedef struct {
     bool bosz_ok;
-    float bosz_temperature;
+    float temperature;
     float pressure;
-
-    bool dte_ok;
-    float dte_temperature;
     float humidity;
 
     int32_t solar_mv;

@@ -21,8 +21,11 @@
 #define BOSZ_READ   1
 #define BOSZ_WRITE  0
 
+#define BOSZ_A_CALIB        0x88
 #define BOSZ_A_ID           0xD0
 #define BOSZ_A_RESET        0xE0
+#define BOSZ_A_MORE_CALIB   0xE1
+#define BOSZ_A_CTRL_HUM     0xF2
 #define BOSZ_A_STATUS       0xF3
 #define BOSZ_A_CTRL_MEAS    0xF4
 #define BOSZ_A_CONFIG       0xF5
@@ -32,9 +35,10 @@
 #define BOSZ_A_TEMP_MSB     0xFA
 #define BOSZ_A_TEMP_LSB     0xFB
 #define BOSZ_A_TEMP_XLSB    0xFC
-#define BOSZ_A_CALIB        0x88
+#define BOSZ_A_HUM_MSB      0xFD
+#define BOSZ_A_HUM_LSB      0xFE
 
-#define BOSZ_CHIP_ID        0x58
+#define BOSZ_CHIP_ID        0x60
 
 typedef union {
     struct {
@@ -53,30 +57,59 @@ typedef struct __attribute__((packed))
     uint8_t temp_msb;
     uint8_t temp_lsb;
     uint8_t temp_xlsb;
+    uint8_t hum_msb;
+    uint8_t hum_lsb;
 } BoszMeas_t;
+
+#define BOSZ_CALIB_PART_1 \
+    uint16_t dig_T1;    \
+    int16_t  dig_T2;    \
+    int16_t  dig_T3;    \
+    uint16_t dig_P1;    \
+    int16_t  dig_P2;    \
+    int16_t  dig_P3;    \
+    int16_t  dig_P4;    \
+    int16_t  dig_P5;    \
+    int16_t  dig_P6;    \
+    int16_t  dig_P7;    \
+    int16_t  dig_P8;    \
+    int16_t  dig_P9;    \
+    uint8_t  reserved;  \
+    uint8_t  dig_H1;    \
+
+
+typedef struct __attribute__((packed)) BoszCalib_tTag
+{
+    BOSZ_CALIB_PART_1
+} BoszCalib_t;
+
+typedef struct __attribute__((packed)) BoszMoreCalib_tTag
+{
+    int16_t  dig_H2;
+    uint8_t  dig_H3;
+    uint8_t  bosh_are_you_freaking_high_E4;
+    uint8_t  bosh_are_you_freaking_high_E5;
+    uint8_t  bosh_are_you_freaking_high_E6;
+    int8_t   dig_H6;
+} BoszMoreCalib_t;
 
 
 static struct __attribute__((packed))
 {
-    uint16_t dig_T1;
-    int16_t  dig_T2;
-    int16_t  dig_T3;
-    uint16_t dig_P1;
-    int16_t  dig_P2;
-    int16_t  dig_P3;
-    int16_t  dig_P4;
-    int16_t  dig_P5;
-    int16_t  dig_P6;
-    int16_t  dig_P7;
-    int16_t  dig_P8;
-    int16_t  dig_P9;
+    BOSZ_CALIB_PART_1
+    int16_t  dig_H2;
+    uint8_t  dig_H3;
+    int16_t  dig_H4;
+    int16_t  dig_H5;
+    int8_t   dig_H6;
 } s_calib;
+
 
 static spi_device_handle_t s_spi;
 
 static int32_t s_t_fine;
 
-int32_t bmp280_compensate_T_int32(int32_t adc_T)
+int32_t bme280_compensate_T_int32(int32_t adc_T)
 {
     int32_t var1, var2, T;
     var1 = ((((adc_T>>3) - ((int32_t)s_calib.dig_T1<<1))) * ((int32_t)s_calib.dig_T2)) >> 11;
@@ -87,7 +120,7 @@ int32_t bmp280_compensate_T_int32(int32_t adc_T)
     return T;
 }
 
-uint32_t bmp280_compensate_P_int64(int32_t adc_P)
+uint32_t bme280_compensate_P_int64(int32_t adc_P)
 {
     int64_t var1, var2, p;
     var1 = ((int64_t)s_t_fine) - 128000;
@@ -106,6 +139,23 @@ uint32_t bmp280_compensate_P_int64(int32_t adc_P)
     var2 = (((int64_t)s_calib.dig_P8) * p) >> 19;
     p = ((p + var1 + var2) >> 8) + (((int64_t)s_calib.dig_P7)<<4);
     return (uint32_t)p;
+}
+
+
+uint32_t bme280_compensate_H_int32(int32_t adc_H)
+{
+    int32_t v_x1_u32r;
+    v_x1_u32r = (s_t_fine - ((int32_t)76800));
+    v_x1_u32r = (((((adc_H << 14) - (((int32_t)s_calib.dig_H4) << 20) - (((int32_t)s_calib.dig_H5) *
+            v_x1_u32r)) + ((int32_t)16384)) >> 15) * (((((((v_x1_u32r *
+                    ((int32_t)s_calib.dig_H6)) >> 10) * (((v_x1_u32r * ((int32_t)s_calib.dig_H3)) >> 11) +
+                            ((int32_t)32768))) >> 10) + ((int32_t)2097152)) * ((int32_t)s_calib.dig_H2) +
+                    8192) >> 14));
+    v_x1_u32r = (v_x1_u32r - (((((v_x1_u32r >> 15) * (v_x1_u32r >> 15)) >> 7) *
+            ((int32_t)s_calib.dig_H1)) >> 4));
+    v_x1_u32r = (v_x1_u32r < 0 ? 0 : v_x1_u32r);
+    v_x1_u32r = (v_x1_u32r > 419430400 ? 419430400 : v_x1_u32r);
+    return (uint32_t)(v_x1_u32r>>12);
 }
 
 int bosz_init(void)
@@ -154,7 +204,7 @@ int bosz_init(void)
             memset(&t, 0, sizeof(t));
             t.cmd = BOSZ_READ;
             t.addr = BOSZ_A_CALIB;
-            t.length = sizeof(s_calib) * 8;
+            t.length = sizeof(BoszCalib_t) * 8;
             t.user = (void *) 0;
             t.rx_buffer = &s_calib;
 
@@ -162,7 +212,31 @@ int bosz_init(void)
 
             if (ESP_OK == ret)
             {
-                return 0;
+                /* read more calibration variables */
+                BoszMoreCalib_t moreCalib;
+
+                memset(&t, 0, sizeof(t));
+                t.cmd = BOSZ_READ;
+                t.addr = BOSZ_A_MORE_CALIB;
+                t.length = sizeof(BoszMoreCalib_t) * 8;
+                t.user = (void *) 0;
+                t.rx_buffer = &moreCalib;
+
+                ret = spi_device_polling_transmit(s_spi, &t);
+
+                if (ESP_OK == ret)
+                {
+                    s_calib.dig_H2 = moreCalib.dig_H2;
+                    s_calib.dig_H3 = moreCalib.dig_H3;
+                    s_calib.dig_H4 = (int16_t) ((((uint16_t) moreCalib.bosh_are_you_freaking_high_E4) << 4)
+                            | (moreCalib.bosh_are_you_freaking_high_E5 & 0xF));
+                    s_calib.dig_H5 = (int16_t) ((moreCalib.bosh_are_you_freaking_high_E5 >> 4)
+                            | ( ((uint16_t) moreCalib.bosh_are_you_freaking_high_E6) << 4));
+
+                    return 0;
+                }
+
+                return -4;
             }
 
             return -3;
@@ -174,7 +248,7 @@ int bosz_init(void)
     return -1;
 }
 
-int bosz_read(int32_t * temperature, uint32_t * pressure)
+int bosz_read(int32_t * temperature, uint32_t * pressure, uint32_t * humidity)
 {
     CtrlMeas_t ctrl;
     esp_err_t ret;
@@ -186,40 +260,56 @@ int bosz_read(int32_t * temperature, uint32_t * pressure)
 
     memset(&t, 0, sizeof(t));
     t.cmd = BOSZ_WRITE;
-    t.addr = BOSZ_A_CTRL_MEAS;
+    t.addr = BOSZ_A_CTRL_HUM;
     t.length = 8;
     t.flags = SPI_TRANS_USE_TXDATA;
     t.user = (void *) 0;
-    t.tx_data[0] = ctrl.value;
+    t.tx_data[0] = 2; // oversampling x 2
 
     ret = spi_device_polling_transmit(s_spi, &t);
 
     if (ESP_OK == ret)
     {
-        BoszMeas_t meas;
-
-        vTaskDelay(50 / portTICK_RATE_MS);
 
         memset(&t, 0, sizeof(t));
-        t.cmd = BOSZ_READ;
-        t.addr = BOSZ_A_PRESS_MSB;
-        t.length = 6*8;
-        t.rx_buffer = &meas;
+        t.cmd = BOSZ_WRITE;
+        t.addr = BOSZ_A_CTRL_MEAS;
+        t.length = 8;
+        t.flags = SPI_TRANS_USE_TXDATA;
+        t.user = (void *) 0;
+        t.tx_data[0] = ctrl.value;
 
         ret = spi_device_polling_transmit(s_spi, &t);
 
         if (ESP_OK == ret)
         {
-            int32_t adc_P = (int32_t) ( ((uint32_t) meas.press_xlsb & 15) | (((uint32_t) meas.press_lsb) << 4) | (((uint32_t) meas.press_msb) << 12) );
-            int32_t adc_T = (int32_t) ( ((uint32_t) meas.temp_xlsb & 15) | (((uint32_t) meas.temp_lsb) << 4) | (((uint32_t) meas.temp_msb) << 12) );
+            BoszMeas_t meas;
 
-            *temperature = bmp280_compensate_T_int32(adc_T);
-            *pressure = bmp280_compensate_P_int64(adc_P);
+            vTaskDelay(50 / portTICK_RATE_MS);
 
-            return 0;
+            memset(&t, 0, sizeof(t));
+            t.cmd = BOSZ_READ;
+            t.addr = BOSZ_A_PRESS_MSB;
+            t.length = sizeof(meas) * 8;
+            t.rx_buffer = &meas;
+
+            ret = spi_device_polling_transmit(s_spi, &t);
+
+            if (ESP_OK == ret)
+            {
+                int32_t adc_P = (int32_t) ( ((uint32_t) meas.press_xlsb & 15) | (((uint32_t) meas.press_lsb) << 4) | (((uint32_t) meas.press_msb) << 12) );
+                int32_t adc_T = (int32_t) ( ((uint32_t) meas.temp_xlsb & 15) | (((uint32_t) meas.temp_lsb) << 4) | (((uint32_t) meas.temp_msb) << 12) );
+                int32_t adc_H = (int32_t) ( ((uint32_t) meas.hum_lsb) | (((uint32_t) meas.hum_msb) << 8) );
+
+                *temperature = bme280_compensate_T_int32(adc_T);
+                *pressure = bme280_compensate_P_int64(adc_P);
+                *humidity = bme280_compensate_H_int32(adc_H);
+
+                return 0;
+            }
+
+            return -2;
         }
-
-        return -2;
     }
 
     return -1;
@@ -244,6 +334,11 @@ void bosz_test(void)
         printf("int16_t  dig_P7 = %d\n", (int) s_calib.dig_P7);
         printf("int16_t  dig_P8 = %d\n", (int) s_calib.dig_P8);
         printf("int16_t  dig_P9 = %d\n", (int) s_calib.dig_P9);
+        printf("uint8_t  dig_H1 = %d\n", (int) s_calib.dig_H1);
+        printf("int16_t  dig_H2 = %d\n", (int) s_calib.dig_H2);
+        printf("uint8_t  dig_H3 = %d\n", (int) s_calib.dig_H3);
+        printf("int16_t  dig_H4 = %d\n", (int) s_calib.dig_H4);
+        printf("int16_t  dig_H5 = %d\n", (int) s_calib.dig_H5);
         printf("\n\n");
 
         vTaskDelay(1000 / portTICK_RATE_MS);
@@ -252,10 +347,11 @@ void bosz_test(void)
         {
             int32_t t;
             uint32_t p;
+            uint32_t h;
 
-            if (0 == (res = bosz_read(&t, &p)))
+            if (0 == (res = bosz_read(&t, &p, &h)))
             {
-                printf("T = %f C  P = %f hPa\n", ((double) t) / 100., ((double) (p / 256)) / 100.);
+                printf("T = %f C  P = %f hPa  RH = %.2f %%\n", ((double) t) / 100., ((double) (p / 256)) / 100., ((double) h / 1024.));
             }
             else
             {

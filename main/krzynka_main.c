@@ -12,7 +12,6 @@
 
 #include "smog.h"
 #include "bosz.h"
-#include "humtemp.h"
 #include "lux.h"
 #include "wifi.h"
 #include "storage.h"
@@ -24,7 +23,6 @@ void app_main(void)
     const GniotConfig_t * cfg;
     StationData_t weather_data = {
             .bosz_ok = false,
-            .dte_ok = false,
             .smog_ok = false,
     };
 
@@ -39,7 +37,6 @@ void app_main(void)
     smog_init();
     smog_set_sleep(false);
     bosz_init();
-    humtemp_init();
     lux_init();
 
     cfg = config_get();
@@ -48,33 +45,19 @@ void app_main(void)
     {
         int32_t t;
         uint32_t p;
-        if (0 == bosz_read(&t,  &p))
+        uint32_t h;
+        if (0 == bosz_read(&t, &p, &h))
         {
             double ft = ((double) t) / 100.;
             double fp = ((double) (p / 256)) / 100.;
-            printf("T = %f C  P = %f hPa\n", ft, fp);
-            weather_data.bosz_temperature = (float) ft;
+            double fh = ((double) h) / 1024.;
+            printf("T = %f C  P = %f hPa  RH = %.2f %%\n", ft, fp, fh);
+            weather_data.temperature = (float) ft;
             weather_data.pressure = (float) fp;
+            weather_data.humidity = (float) fh;
             weather_data.bosz_ok = true;
             break;
         }
-    }
-    for (int i = 0; i < 3; ++i)
-    {
-        Humidity_t h;
-        Temperature_t t;
-
-        if (0 == humtemp_read(&h,  &t))
-        {
-            double ft = ((double) t) / 10.;
-            double fh = ((double) h) / 10.;
-            printf("T = %f C  RH = %f %%\n", ft, fh);
-            weather_data.dte_temperature = ft;
-            weather_data.humidity = fh;
-            weather_data.dte_ok = true;
-            break;
-        }
-        vTaskDelay(2500 / portTICK_RATE_MS);
     }
 
     {
