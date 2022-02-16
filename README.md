@@ -11,6 +11,8 @@ Custom board made of following components:
  * DHT-22 humidity + temperature sensor;
  * PMS7003 particle concentration sensor;
  
+Later, DHT-22 was removed and BMP280 replaced with BME280.
+
 Power is supplied by LiIon and solar batteries.
  
 # Software
